@@ -1,0 +1,136 @@
+---
+title: "Human Activity Recognition Prediction"
+author: "Vincent Dupont"
+date: "8/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(gbm)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+set.seed(1234)
+```
+
+## Executive Summary
+
+The purpose of this prediction study design is to be able to answer: In which position (class feature in the dataset) was the subject when doing the activity?
+
+
+## Data
+
+To answer the question we are going to use the Human Activity Recognition dataset that can be found at the following url:
+
+http://groupware.les.inf.puc-rio.br/har
+
+### Loading
+
+```{r }
+data <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=T)
+validationData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=T)
+dim(data)
+```
+
+### Cleaning
+
+#### Removing near zero variance variables
+```{r }
+NZV <- nearZeroVar(data)
+data <- data[, -NZV]
+dim(data)
+```
+
+#### Removing NA
+```{r }
+anyNA    <- sapply(data, function(x) any(is.na(x)))
+data <- data[, anyNA==FALSE]
+dim(data)
+```
+
+#### Removing useless features
+```{r }
+data <- within(data, rm(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, num_window))
+dim(data)
+```
+
+### Splitting
+```{r }
+inTrain <- createDataPartition(data$classe, p = 0.7, list = FALSE)
+trainingData <- data[inTrain, ]
+testData <- data[-inTrain, ]
+```
+
+## Algorithms
+
+### Random Forest
+```{r, cache=TRUE}
+trControlRF <- trainControl(method="cv", number=2, verboseIter=FALSE)
+fitRF <- train(classe ~ ., data=trainingData, method="rf",
+                          trControl=trControlRF)
+fitRF$finalModel
+
+```
+
+```{r}
+predictRF <- predict(fitRF, newdata=testData)
+confusionMatrix(predictRF, testData$classe)
+```
+
+Random Forest Accuracy : 0.9941
+
+### Decision Tree
+```{r, cache=TRUE}
+trControlDT <- trainControl(method="cv", number=5)
+fitDT <- train(classe~., data=trainingData, method="rpart", trControl=trControlDT)
+fitDT$finalModel
+```
+
+```{r}
+fancyRpartPlot(fitDT$finalModel)
+```
+
+
+```{r}
+predictDT <- predict(fitDT, newdata=testData)
+confusionMatrix(predictDT, testData$classe)
+```
+
+Decision Tree Accuracy : 0.489
+
+### Generalized Boosted Model
+
+```{r, cache=TRUE }
+trControlGbm <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 5,
+                           ## repeated two times
+                           repeats = 2)
+
+fitGbm <- train(classe ~ ., data = trainingData,
+                  method = "gbm",
+                  trControl = trControlGbm,
+                  verbose = FALSE)
+fitGbm$finalModel
+```
+
+```{r}
+predictGBM <- predict(fitGbm, newdata=testData)
+confusionMatrix(predictGBM, testData$classe)
+```
+
+Generalized Boosted Model Accuracy : 0.9645
+
+
+## Evaluation
+
+The algorithm with the highest accuracy is Random Forest with 0.9941.
+
+In our final step we are going to use this algorithm with our valication set.
+
+```{r}
+predictions <- predict(fitRF, newdata=validationData)
+data.frame(predictions=predictions)
+```
